@@ -405,6 +405,127 @@ class OSC_OT_CreateNodegroup(bpy.types.Operator):
         self.report({'INFO'}, "Nodegroup created/updated with OSC addresses.")
         return {'FINISHED'}
 
+<<<<<<< HEAD
+=======
+import bpy
+
+class OSC_OT_CreateSverchokNodegroup(bpy.types.Operator):
+    bl_idname = "osc.create_sverchok_nodegroup"
+    bl_label = "Create/Update Sverchok Group"
+
+    def execute(self, context):
+        try:
+            s = context.scene.osc_minrec
+
+            reader = get_reader()
+            if not reader:
+                reader = create_reader()
+
+            group_name = "OSC_Inputs_Sverchok"
+
+            # 1. Pull or cleanly construct the tree container block
+            ng = bpy.data.node_groups.get(group_name)
+            if ng:
+                if ng.bl_idname != "SvGroupTree":
+                    bpy.data.node_groups.remove(ng)
+                    ng = bpy.data.node_groups.new(group_name, "SvGroupTree")
+            else:
+                ng = bpy.data.node_groups.new(group_name, "SvGroupTree")
+
+            # 2. Force Sverchok backend processing handles
+            if hasattr(ng, "init_tree"):
+                ng.init_tree()
+
+            if hasattr(ng, "tree_id_memory") and not ng.tree_id_memory:
+                import time
+                ng.tree_id_memory = f"sv_osc_{int(time.time())}"
+
+            # 3. Always ensure our boundary output block exists on the canvas
+            out_node = None
+            for n in ng.nodes:
+                if n.bl_idname == "NodeGroupOutput":
+                    out_node = n
+                    break
+
+            if not out_node:
+                out_node = ng.nodes.new("NodeGroupOutput")
+                out_node.location = (400, 0)
+
+            # 4. Fallback check: If addresses collection is completely empty, inject a default entry
+            address_list = list(s.addresses)
+            if not address_list:
+                default_addr = s.addresses.add()
+                default_addr.name = "default_input"
+                default_addr.osc_address = "/osc/value"
+                address_list = [default_addr]
+
+            # 5. ITERATE & POPULATE GETTER NODES
+            existing_sockets = {item.name: item for item in ng.interface.items_tree if item.item_type == 'SOCKET'}
+
+            for idx, addr in enumerate(address_list):
+                if addr.name not in existing_sockets:
+                    sock_item = ng.interface.new_socket(
+                        name=addr.name,
+                        in_out='OUTPUT',
+                        socket_type='SvStringsSocket'
+                    )
+                    sock_id = sock_item.identifier
+                else:
+                    sock_id = existing_sockets[addr.name].identifier
+
+                # FIXED: Verified class block tracking using 'SvGetPropNodeMK2'
+                val_node = None
+                node_label = f"OSC: {addr.name}"
+                for n in ng.nodes:
+                    if n.bl_idname == "SvGetPropNodeMK2" and n.label == node_label:
+                        val_node = n
+                        break
+
+                if not val_node:
+                    val_node = ng.nodes.new("SvGetPropNodeMK2")
+                    val_node.label = node_label
+
+                val_node.location = (-100, -160 * idx)
+
+                # ADJUSTED PATH SELECTION:
+                # If your node flavor supports a direct string evaluation path block,
+                # we drop the explicit root reference straight into the prop entry field.
+                val_node.id_type = 'OBJECT'
+                val_node.object_name = reader.name
+
+                # FIXED: Force the property lookup string to target the explicit bracket hierarchy
+                val_node.prop_name = f'bpy.data.objects["{reader.name}"]["{addr.name}"]'
+
+                if hasattr(val_node, "update"):
+                    val_node.update()
+
+                # 6. WIRE UP THE NODE LINK
+                if val_node.outputs and sock_id in out_node.inputs:
+                    target_input = out_node.inputs[sock_id]
+                    for link in list(target_input.links):
+                        ng.links.remove(link)
+                    ng.links.new(val_node.outputs[0], target_input)
+
+            # 7. CLEANUP OBSOLETE BLOCKS
+            for n in list(ng.nodes):
+                if n.bl_idname == "SvGetPropNodeMK2" and n.label not in [f"OSC: {a.name}" for a in address_list]:
+                    ng.nodes.remove(n)
+
+            for name, sock_item in list(existing_sockets.items()):
+                if name not in [a.name for a in address_list]:
+                    ng.interface.remove(sock_item)
+
+            if hasattr(ng, "update"):
+                ng.update()
+
+            self.report({'INFO'}, "Sverchok group and property paths compiled successfully.")
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to populate Sverchok layout: {e}")
+            import traceback
+            traceback.print_exc()
+        return {'FINISHED'}
+
+>>>>>>> 12ee9ea (Added Sverchok support with AI)
 # ==============================
 # UI Panel
 # ==============================
@@ -441,7 +562,18 @@ class OSC_PT_Main(bpy.types.Panel):
 
         layout.separator()
         layout.operator("osc.add_address", icon="ADD")
+<<<<<<< HEAD
         layout.operator("osc.create_nodegroup", icon="NODETREE")
+=======
+        layout.operator("osc.create_nodegroup", icon="NODETREE", text="Create Geometry Nodes Group")
+
+        # Check if Sverchok is available
+        try:
+            import sverchok
+            layout.operator("osc.create_sverchok_nodegroup", icon="NODETREE", text="Create Sverchok Group")
+        except ImportError:
+            pass
+>>>>>>> 12ee9ea (Added Sverchok support with AI)
 
         box = layout.box()
         if len(s.addresses) == 0:
@@ -470,6 +602,10 @@ classes = (
     OSC_OT_AddAddress,
     OSC_OT_RemoveAddress,
     OSC_OT_CreateNodegroup,
+<<<<<<< HEAD
+=======
+    OSC_OT_CreateSverchokNodegroup,
+>>>>>>> 12ee9ea (Added Sverchok support with AI)
     OSC_PT_Main,
 )
 
